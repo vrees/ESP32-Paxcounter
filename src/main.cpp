@@ -29,11 +29,12 @@ Task          Core  Prio  Purpose
 -------------------------------------------------------------------------------
 ledloop       0     3     blinks LEDs
 spiloop       0     2     reads/writes data on spi interface
+mqttloop      0     2     reads/writes data on ETH interface
 IDLE          0     0     ESP32 arduino scheduler -> runs wifi sniffer
 
 lmictask      1     2     MCCI LMiC LORAWAN stack
 clockloop     1     4     generates realtime telegrams for external clock
-timesync_req  1     3     processes realtime time sync requests
+timesync_proc 1     3     processes realtime time sync requests
 irqhandler    1     1     cyclic tasks (i.e. displayrefresh) triggered by timers
 gpsloop       1     1     reads data from GPS via serial or i2c
 lorasendtask  1     1     feeds data from lora sendqueue to lmcic
@@ -79,15 +80,14 @@ triggers pps 1 sec impulse
 configData_t cfg; // struct holds current device configuration
 char lmic_event_msg[LMIC_EVENTMSG_LEN]; // display buffer for LMIC event message
 uint8_t volatile channel = 0;           // channel rotation counter
-uint16_t volatile macs_total = 0, macs_wifi = 0, macs_ble = 0,
-                  batt_voltage = 0; // globals for display
+uint8_t batt_level = 0;                 // display value
+uint16_t volatile macs_wifi = 0, macs_ble = 0; // globals for display
 
 hw_timer_t *ppsIRQ = NULL, *displayIRQ = NULL, *matrixDisplayIRQ = NULL;
 
 TaskHandle_t irqHandlerTask = NULL, ClockTask = NULL;
 SemaphoreHandle_t I2Caccess;
 bool volatile TimePulseTick = false;
-time_t userUTCTime = 0;
 timesource_t timeSource = _unsynced;
 
 // container holding unique MAC address hashes with Memory Alloctor using PSRAM,
@@ -185,24 +185,29 @@ void setup() {
   digitalWrite(EXT_POWER_SW, EXT_POWER_ON);
   strcat_P(features, " VEXT");
 #endif
+
+#if defined HAS_PMU || defined HAS_IP5306
 #ifdef HAS_PMU
   AXP192_init();
+#elif defined HAS_IP5306
+  IP5306_init();
+#endif
   strcat_P(features, " PMU");
 #endif
 
   // read (and initialize on first run) runtime settings from NVRAM
   loadConfig(); // includes initialize if necessary
 
+  // now that we are powered, we scan i2c bus for devices
+  i2c_scan();
+
 // initialize display
 #ifdef HAS_DISPLAY
   strcat_P(features, " OLED");
   DisplayIsOn = cfg.screenon;
   // display verbose info only after a coldstart (note: blocking call!)
-  init_display(RTC_runmode == RUNMODE_POWERCYCLE ? true : false);
+  dp_init(RTC_runmode == RUNMODE_POWERCYCLE ? true : false);
 #endif
-
-  // scan i2c bus for devices
-  i2c_scan();
 
 #ifdef BOARD_HAS_PSRAM
   assert(psramFound());
@@ -233,7 +238,6 @@ void setup() {
 #ifdef HAS_RGB_LED
   switch_LED(LED_ON);
   strcat_P(features, " RGB");
-  rgb_set_color(COLOR_PINK);
 #endif
 
 #endif // HAS_LED
@@ -258,10 +262,13 @@ void setup() {
 #endif
 
 // initialize battery status
-#if (defined BAT_MEASURE_ADC || defined HAS_PMU)
+#if (defined BAT_MEASURE_ADC || defined HAS_PMU || defined HAS_IP5306)
   strcat_P(features, " BATT");
   calibrate_voltage();
-  batt_voltage = read_voltage();
+  batt_level = read_battlevel();
+#ifdef HAS_IP5306
+  printIP5306Stats();
+#endif
 #endif
 
 #if (USE_OTA)
@@ -305,8 +312,24 @@ void setup() {
 
 // initialize sensors
 #if (HAS_SENSORS)
-  strcat_P(features, " SENS");
+#if (HAS_SENSOR_1)
+#if (COUNT_ENS)
+  ESP_LOGI(TAG, "init CWA-counter");
+  if ( cwa_init() )
+      strcat_P(features, " CWA");
+#else        
+  strcat_P(features, " SENS(1)");
   sensor_init();
+#endif
+#endif
+#if (HAS_SENSOR_2)
+  strcat_P(features, " SENS(2)");
+  sensor_init();
+#endif
+#if (HAS_SENSOR_3)
+  strcat_P(features, " SENS(3)");
+  sensor_init();
+#endif
 #endif
 
 // initialize LoRa
@@ -323,9 +346,21 @@ void setup() {
   assert(spi_init() == ESP_OK);
 #endif
 
-#ifdef HAS_SDCARD
-  if (sdcardInit())
+// initialize MQTT
+#ifdef HAS_MQTT
+  strcat_P(features, " MQTT");
+  assert(mqtt_init() == ESP_OK);
+#endif
+
+#if (HAS_SDCARD)
+  if (sdcard_init())
     strcat_P(features, " SD");
+#endif
+
+#if (HAS_SDS011)
+  ESP_LOGI(TAG, "init fine-dust-sensor");
+  if (sds011_init())
+    strcat_P(features, " SDS");
 #endif
 
 #if (VENDORFILTER)
@@ -450,7 +485,7 @@ void setup() {
 
 // initialize gps time
 #if (HAS_GPS)
-  fetch_gpsTime();
+  get_gpstime();
 #endif
 
 #if (defined HAS_IF482 || defined HAS_DCF77)
@@ -458,7 +493,7 @@ void setup() {
   clock_init();
 #endif
 
-#if (TIME_SYNC_LORASERVER)
+#if (TIME_SYNC_LORASERVER) || (TIME_SYNC_LORAWAN)
   timesync_init(); // create loraserver time sync task
 #endif
 

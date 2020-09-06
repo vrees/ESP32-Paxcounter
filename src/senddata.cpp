@@ -50,10 +50,19 @@ void SendPayload(uint8_t port, sendprio_t prio) {
 #ifdef HAS_SPI
   spi_enqueuedata(&SendBuffer);
 #endif
+#ifdef HAS_MQTT
+  mqtt_enqueuedata(&SendBuffer);
+#endif
 
 // write data to sdcard, if present
-#ifdef HAS_SDCARD
-  sdcardWriteData(macs_wifi, macs_ble);
+#if (HAS_SDCARD)
+  if ( port == COUNTERPORT ) {
+      sdcardWriteData(macs_wifi, macs_ble
+#if (COUNT_ENS)
+       , cwa_report()
+#endif              
+       );
+  }
 #endif
 
 } // SendPayload
@@ -63,9 +72,12 @@ void sendData() {
 
   uint8_t bitmask = cfg.payloadmask;
   uint8_t mask = 1;
-  #if (HAS_GPS) 
+#if (HAS_GPS)
   gpsStatus_t gps_status;
-  #endif
+#endif
+#if (HAS_SDS011)
+  sdsStatus_t sds_status;
+#endif
 
   while (bitmask) {
     switch (bitmask & mask) {
@@ -95,6 +107,10 @@ void sendData() {
       if (cfg.blescan)
         payload.addCount(macs_ble, MAC_SNIFF_BLE);
 #endif
+#if (HAS_SDS011)
+      sds011_store(&sds_status);
+      payload.addSDS(sds_status);
+#endif
       SendPayload(COUNTERPORT, prio_normal);
       // clear counter if not in cumulative counter mode
       if (cfg.countermode != 1) {
@@ -104,7 +120,7 @@ void sendData() {
       }
 #ifdef HAS_DISPLAY
       else
-        oledPlotCurve(macs.size(), true);
+        dp_plotCurve(macs.size(), true);
 #endif
       break;
 #endif
@@ -133,21 +149,30 @@ void sendData() {
 #endif
 
 #if (HAS_SENSORS)
+#if (HAS_SENSOR_1)
     case SENSOR1_DATA:
       payload.reset();
       payload.addSensor(sensor_read(1));
       SendPayload(SENSOR1PORT, prio_normal);
+#if (COUNT_ENS)
+      cwa_clear();
+#endif
       break;
+#endif
+#if (HAS_SENSOR_2)
     case SENSOR2_DATA:
       payload.reset();
       payload.addSensor(sensor_read(2));
       SendPayload(SENSOR2PORT, prio_normal);
       break;
+#endif
+#if (HAS_SENSOR_3)
     case SENSOR3_DATA:
       payload.reset();
       payload.addSensor(sensor_read(3));
       SendPayload(SENSOR3PORT, prio_normal);
       break;
+#endif
 #endif
 
 #if (defined BAT_MEASURE_ADC || defined HAS_PMU)
@@ -171,5 +196,8 @@ void flushQueues() {
 #endif
 #ifdef HAS_SPI
   spi_queuereset();
+#endif
+#ifdef HAS_MQTT
+  mqtt_queuereset();
 #endif
 }

@@ -5,16 +5,10 @@
 #include "rtctime.h"
 #include "TimeLib.h"
 #include "irqhandler.h"
-
-#if (HAS_GPS)
+#include "timesync.h"
 #include "gpsread.h"
-#endif
-
-#ifdef HAS_IF482
 #include "if482.h"
-#elif defined HAS_DCF77
 #include "dcf77.h"
-#endif
 
 extern const char timeSetSymbols[];
 extern Ticker timesyncer;
@@ -31,7 +25,5 @@ void IRAM_ATTR setMyTime(uint32_t t_sec, uint16_t t_msec, timesource_t mytimesou
 time_t compiledUTC(void);
 TickType_t tx_Ticks(uint32_t framesize, unsigned long baud, uint32_t config,
                     int8_t rxPin, int8_t txPins);
-time_t TimeSyncAns(uint8_t seqNo, uint64_t unixTime);
-void TimeSyncReq(uint8_t seqNo);
 
 #endif // _timekeeper_H

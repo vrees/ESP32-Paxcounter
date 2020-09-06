@@ -54,16 +54,17 @@ Depending on board hardware following features are supported:
 - LED (shows power & status)
 - OLED Display (shows detailed status)
 - RGB LED (shows colorized status)
-- Button (used to flip display pages if device has display, else sends alarm message)
+- Button (short press: flip display page / long press: send alarm message)
 - Silicon unique ID
-- Battery voltage monitoring
+- Battery voltage monitoring (analog read / AXP192 / IP5306)
 - GPS (Generic serial NMEA, or Quectel L76 I2C)
-- Environmental sensor (Bosch BMP180/BME280/BME680 I2C)
+- Environmental sensors (Bosch BMP180/BME280/BME680 I2C; SDS011 serial)
 - Real Time Clock (Maxim DS3231 I2C)
 - IF482 (serial) and DCF77 (gpio) time telegram generator
 - Switch external power / battery
 - LED Matrix display (similar to [this 64x16 model](https://www.instructables.com/id/64x16-RED-LED-Marquee/), can be ordered on [Aliexpress](https://www.aliexpress.com/item/P3-75-dot-matrix-led-module-3-75mm-high-clear-top1-for-text-display-304-60mm/32616683948.html))
-- SD-card (see section SD-card here)
+- SD-card (see section SD-card here) for logging pax data
+- Ethernet interface for MQTT communication via TCP/IP
 
 Target platform must be selected in [platformio.ini](https://github.com/cyberman54/ESP32-Paxcounter/blob/master/platformio.ini).<br>
 Hardware dependent settings (pinout etc.) are stored in board files in /hal directory. If you want to use a ESP32 board which is not yet supported, use hal file generic.h and tailor pin mappings to your needs. Pull requests for new boards welcome.<br>
@@ -82,25 +83,28 @@ By default bluetooth sniffing is disabled (#define *BLECOUNTER* 0 in paxcounter.
 
 # Preparing
 
-Before compiling the code,
+Compile time configuration is spread across several files. Before compiling the code, edit or create the following files:
 
-- **edit platformio.ini** and select desired hardware target in section boards. To add a new board, create an appropriate hardware abstraction layer file in hal subdirectory, and add a pointer to this file in sections boards.
+## platformio.ini
+Edit `platformio.ini` and select desired hardware target in section boards. To add a new board, create an appropriate hardware abstraction layer file in hal subdirectory, and add a pointer to this file in sections boards.
 
-- **edit src/paxcounter.conf** and tailor settings in this file according to your needs and use case. Please take care of the duty cycle regulations of the LoRaWAN network you're going to use.
+## src/paxcounter.conf
+Edit `src/paxcounter.conf` and tailor settings in this file according to your needs and use case. Please take care of the duty cycle regulations of the LoRaWAN network you're going to use.
 
-- **edit src/lmic_config.h** and tailor settings in this file according to your country and device hardware. Please take care of national regulations when selecting the frequency band for LoRaWAN.
+If your device has a **real time clock** it can be updated bei either LoRaWAN network or GPS time, according to settings *TIME_SYNC_INTERVAL* and *TIME_SYNC_LORAWAN* in `paxcounter.conf`.
 
-- **create file loraconf.h in your local /src directory** using the template [loraconf.sample.h](https://github.com/cyberman54/ESP32-Paxcounter/blob/master/src/loraconf.sample.h) and populate it with your personal APPEUI und APPKEY for the LoRaWAN network. If you're using popular <A HREF="https://thethingsnetwork.org">TheThingsNetwork</A> you can copy&paste the keys from TTN console or output of ttnctl.
+## src/lmic_config.h
+Edit `src/lmic_config.h` and tailor settings in this file according to your country and device hardware. Please take care of national regulations when selecting the frequency band for LoRaWAN.
 
-- **create file ota.conf in your local /src directory** using the template [ota.sample.conf](https://github.com/cyberman54/ESP32-Paxcounter/blob/master/src/ota.sample.conf) and enter your WIFI network&key. These settings are used for downloading updates. If you want to push own OTA updates you need a <A HREF="https://bintray.com/JFrog">Bintray account</A>. Enter your Bintray user account data in ota.conf. If you don't need wireless firmware updates just rename ota.sample.conf to ota.conf.
+## src/loraconf.h
+Create file `src/loraconf.h` using the template [src/loraconf.sample.h](https://github.com/cyberman54/ESP32-Paxcounter/blob/master/src/loraconf.sample.h) and modify it, to use your personal values.
+To join the network and activate your paxcounter, you have to configure either the preferred OTAA method or the ABP method. You should use OTAA, whenever possible. To understand the differences of the two methods, [this article](https://www.thethingsnetwork.org/docs/devices/registration.html) may be useful.
 
-To join the network only method OTAA is supported, not ABP. The DEVEUI for OTAA will be derived from the device's MAC adress during device startup and is shown on the device's display (if it has one). It is also printed on the serial console for copying it, if you set *verbose 1* in paxcounter.conf and *debug_level 3* in platformio.ini.
+To configure OTAA, leave `#define LORA_ABP` deactivated (commented). To use ABP, activate (uncomment) `#define LORA_ABP` in the file `src/loraconf.h`.
+The file `src/loraconf.h.sample` contains more information about the values to provide.
 
-If your device has a fixed DEVEUI enter this in your local loraconf.h file. During compile time this DEVEUI will be grabbed from loraconf.h and inserted in the code.
-
-If your device has silicon **Unique ID** which is stored in serial EEPROM Microchip 24AA02E64 you don't need to change anything. The Unique ID will be read during startup and DEVEUI will be generated from it, overriding settings in loraconf.h.
-
-If your device has a **real time clock** it can be updated bei either LoRaWAN network or GPS time, according to settings *TIME_SYNC_INTERVAL* and *TIME_SYNC_LORAWAN* in paxcounter.conf.
+## src/ota.conf
+Create file `src/ota.conf` using the template [src/ota.sample.conf](https://github.com/cyberman54/ESP32-Paxcounter/blob/master/src/ota.sample.conf) and enter your WIFI network&key. These settings are used for downloading updates. If you want to push own OTA updates you need a <A HREF="https://bintray.com/JFrog">Bintray account</A>. Enter your Bintray user account data in ota.conf. If you don't need wireless firmware updates just rename ota.sample.conf to ota.conf.
 
 # Building
 
@@ -145,12 +149,13 @@ Paxcounter generates identifiers for sniffed MAC adresses and collects them temp
 
 **RGB LED:**
 
-- Green each blink: seen a new Wifi device
-- Magenta each blink: seen a new BLE device
-- Yellow quick blink: joining LoRaWAN network in progress or pending
-- Blue blink: LoRaWAN data transmit in progress or pending
-- Red long blink: LoRaWAN stack error
-- White long blink: Known Beacon detected
+- Green: seen a new Wifi device
+- Magenta: seen a new BLE device
+- Yellow: joining LoRaWAN network in progress or pending
+- Pink: LORAWAN MAC transmit in progress
+- Blue: LoRaWAN data transmit in progress or pending
+- Red: LoRaWAN stack error
+- White: Known Beacon detected
 
 # Display
 
@@ -167,7 +172,7 @@ by pressing the button of the device.
 
 # Sensors and Peripherals
 
-You can add up to 3 user defined sensors. Insert sensor's payload scheme in [*sensor.cpp*](src/sensor.cpp). Bosch BMP180 / BME280 / BME680 environment sensors are supported. Enable flag *lib_deps_sensors* for your board in [*platformio.ini*](src/platformio.ini) and configure BME in board's hal file before build. If you need Bosch's proprietary BSEC libraray (e.g. to get indoor air quality value from BME680) further enable *build_flags_sensors*, which comes on the price of reduced RAM and increased build size. RTC DS3231, generic serial NMEA GPS, I2C LoPy GPS are supported, and to be configured in board's hal file. See [*generic.h*](src/hal/generic.h) for all options and for proper configuration of BME280/BME680.
+You can add up to 3 user defined sensors. Insert sensor's payload scheme in [*sensor.cpp*](src/sensor.cpp). Bosch BMP180 / BME280 / BME680 environment sensors are supported. Enable flag *lib_deps_sensors* for your board in [*platformio.ini*](src/platformio.ini) and configure BME in board's hal file before build. If you need Bosch's proprietary BSEC libraray (e.g. to get indoor air quality value from BME680) further enable *build_flags_sensors*, which comes on the price of reduced RAM and increased build size. Furthermore, SDS011, RTC DS3231, generic serial NMEA GPS, I2C LoPy GPS are supported, and to be configured in board's hal file. See [*generic.h*](src/hal/generic.h) for all options and for proper configuration of BME280/BME680.
 
 Output of user sensor data can be switched by user remote control command 0x14 sent to Port 2. 
 
@@ -195,16 +200,31 @@ Paxcounter can keep it's time-of-day synced with an external time source. Set *#
 Paxcounter can be used to sync a wall clock which has a DCF77 or IF482 time telegram input. Set *#define HAS_IF482* or *#define HAS_DCF77* in board's hal file to setup clock controller. Use case of this function is to integrate paxcounter and clock. Accurary of the synthetic DCF77 signal depends on accuracy of on board's time base, see above.
 
 # mobile PaxCounter via https://opensensemap.org/
+
 This describes how to set up a mobile PaxCounter:
-Follow all steps so far for preparing the device, use the packed payload format. In paxcounter.conf set PAYLOAD_OPENSENSEBOX to 1. Register a new sensbox on https://opensensemap.org/.
+Follow all steps so far for preparing the device, use the packed payload format. In [paxcounter.conf](src/paxcounter.conf) set PAYLOAD_OPENSENSEBOX to 1. Register a new sensbox on https://opensensemap.org/.
 There in the sensor configuration select "TheThingsNetwork" and set Decoding Profil to "LoRa serialization", enter your TTN Application and Device Id. Decoding option has to be
 	[{"decoder":"latLng"},{"decoder":"uint16","sensor_id":"yoursensorid"}] 
 
+# Covid-19 Exposure Notification System beacon detection (Germany: "Corona Warn App counter")
+
+Bluetooth low energy service UUID 0xFD6F, used by Google/Apple COVID-19 Exposure Notification System, can be monitored and counted. By comparing with the total number of observed devices this gives an indication how many people staying in proximity are using Apps for tracing COVID-19 exposures, e.g. in Germany the "Corona Warn App". To achive best resulta withs this funcion, use following settings in [paxcounter.conf](src/paxcounter.conf):
+
+	#define COUNT_ENS		1	// enable ENS monitoring function
+	#define VENDORFILTER		0	// disable OUI filter (scans ALL device MACs)
+	#define BLECOUNTER		1	// enable bluetooth sniffing
+	#define WIFICOUNTER		0	// disable wifi sniffing (improves BLE scan speed)
+	#define HAS_SENSOR_1		1	// optional: transmit ENS counter data to server
+
 # SD-card
+
 Data can be stored on an SD-card if one is availabe. Simply choose the file in src/hal and add the following lines to your hal-file:
 
-    #define HAS_SDCARD 1     // this board has an SD-card-reader/writer
-    // Pins for SD-card
+    #define HAS_SDCARD 1     // SD-card-reader/writer, using SPI interface
+	OR
+	#define HAS_SDCARD 2     // SD-card-reader/writer, using SDMMC interface
+
+    // Pins for SPI interface
     #define SDCARD_CS   (13) // fill in the correct numbers for your board
     #define SDCARD_MOSI (15)
     #define SDCARD_MISO (2)
@@ -339,6 +359,9 @@ Hereafter described is the default *plain* format, which uses MSB bit numbering.
 The device listenes for remote control commands on LoRaWAN Port 2. Multiple commands per downlink are possible by concatenating them.
 
 Note: all settings are stored in NVRAM and will be reloaded when device starts.
+
+Send for example `8386` as Downlink on Port 2 to get battery status and time/date from the device.
+<img src="img/paxcounter_downlink_example.png">
 
 0x01 set scan RSSI limit
 
@@ -548,4 +571,4 @@ Thanks to
 - [terrillmoore](https://github.com/mcci-catena) for maintaining the LMIC for arduino LoRaWAN stack
 - [sbamueller](https://github.com/sbamueller) for writing the tutorial in Make Magazine
 - [Stefan](https://github.com/nerdyscout) for paxcounter opensensebox integration
-- [August Quint](https://github.com/AugustQu) for adding SD card data logger support
+- [August Quint](https://github.com/AugustQu) for adding SD card data logger, SDS011 and ENS support

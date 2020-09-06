@@ -1,17 +1,15 @@
 #ifndef _TIMESYNC_H
 #define _TIMESYNC_H
 
-#include <chrono>
 #include "globals.h"
 #include "irqhandler.h"
 #include "timekeeper.h"
 
-//#define TIME_SYNC_TRIGGER 100 // threshold for time sync [milliseconds]
-#define TIME_SYNC_FRAME_LENGTH 0x07 // timeserver answer frame length [bytes]
-#define TIME_SYNC_FIXUP 16 // empirical calibration to fixup processing time [milliseconds]
-#define TIMEREQUEST_MAX_SEQNO 0xfe // threshold for wrap around seqno
-#define TIMEREQUEST_FINISH                                                     \
-  (TIMEREQUEST_MAX_SEQNO + 1) // marker for end of timesync handshake
+#define TIME_SYNC_FRAME_LENGTH 6 // timeserver answer frame length [bytes]
+#define TIME_SYNC_FIXUP 16 // compensation for processing time [milliseconds]
+#define TIME_SYNC_MAX_SEQNO 0xfe // threshold for wrap around time_sync_seqNo
+#define TIME_SYNC_END_FLAG (TIME_SYNC_MAX_SEQNO + 1) // end of handshake marker
+#define GPS_UTC_DIFF 315964800 // seconds diff between gps and utc epoch
 
 enum timesync_t {
   timesync_tx,
@@ -22,9 +20,9 @@ enum timesync_t {
 };
 
 void timesync_init(void);
-void send_timesync_req(void);
-int recv_timesync_ans(const uint8_t buf[], uint8_t buf_len);
-void process_timesync_req(void *taskparameter);
-void store_timestamp(uint32_t timestamp, timesync_t timestamp_type);
+void timesync_request(void);
+void timesync_store(uint32_t timestamp, timesync_t timestamp_type);
+void IRAM_ATTR timesync_processReq(void *taskparameter);
+void IRAM_ATTR timesync_serverAnswer(void *pUserData, int flag);
 
 #endif

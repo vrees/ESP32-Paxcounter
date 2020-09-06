@@ -2,19 +2,13 @@
 #define _SENDDATA_H
 
 #include "spislave.h"
+#include "mqttclient.h"
 #include "cyclic.h"
-
-#if(HAS_LORA)
+#include "sensor.h"
 #include "lorawan.h"
-#endif
-
-#ifdef HAS_DISPLAY
 #include "display.h"
-#endif
-
-#ifdef HAS_SDCARD
 #include "sdcard.h"
-#endif
+#include "corona.h"
 
 extern Ticker sendcycler;
 

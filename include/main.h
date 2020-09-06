@@ -17,9 +17,9 @@
 #include "ota.h"
 #include "irqhandler.h"
 #include "spislave.h"
-
-#if (HAS_LORA)
+#include "sensor.h"
 #include "lorawan.h"
-#endif
 #include "timekeeper.h"
+#include "corona.h"
+
 #endif

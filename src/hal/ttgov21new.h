@@ -12,21 +12,11 @@
 // This settings are for boards labeled v1.6 on pcb, NOT for v1.5 or older
 */
 
-#define HAS_LORA 1       // comment out if device shall not send data via LoRa
+#define HAS_LORA         1 // comment out if device shall not send data via LoRa
 #define CFG_sx1276_radio 1 // HPD13A LoRa SoC
 
 // enable only if you want to store a local paxcount table on the device
 #define HAS_SDCARD  1      // this board has an SD-card-reader/writer
-// Pins for SD-card
-#define SDCARD_CS    (13)
-#define SDCARD_MOSI  (15)
-#define SDCARD_MISO  (2)
-#define SDCARD_SCLK  (14)
-
-// enable only if device has these sensors, otherwise comment these lines
-// BME280 sensor on I2C bus
-//#define HAS_BME 1 // Enable BME sensors in general
-//#define HAS_BME280 GPIO_NUM_21, GPIO_NUM_22 // SDA, SCL
 
 #define HAS_DISPLAY 1
 #define HAS_LED (25) // green on board LED
@@ -34,9 +24,9 @@
 #define BAT_VOLTAGE_DIVIDER 2 // voltage divider 100k/100k on board
 
 // Pins for I2C interface of OLED Display
-#define MY_OLED_SDA (21)
-#define MY_OLED_SCL (22)
-#define MY_OLED_RST NOT_A_PIN
+#define MY_DISPLAY_SDA (21)
+#define MY_DISPLAY_SCL (22)
+#define MY_DISPLAY_RST NOT_A_PIN
 
 // Pins for LORA chip SPI interface, reset line and interrupt lines
 #define LORA_SCK  (5) 
